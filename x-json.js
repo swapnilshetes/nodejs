@@ -5,34 +5,33 @@ var data = [];
 
 sheet_name_list.forEach(function(y) {
         var worksheet = workbook.Sheets[y];
-        var range = XLSX.utils.decode_range(workbook.Sheets[y]["!ref"]);
-        var noRows = range.e.r; // No.of rows
-        var noCols = range.e.c; 
         var headers = {};
-        var flg =true;
-        var getInx =0;
-        var columnchangeKey=0
+        var getOldInx = 0;
+        var changeColumKeyCounter= 0;
       
     for(z in worksheet) {
 
         if(z[0] === '!') continue;
         //parse out the column, row, and value
         var tt = 0;
+        
         for (var i = 0; i < z.length; i++) {
             if (!isNaN(z[i])) {
                 tt = i;
                 break;
             }
         };
+
         var col = z.substring(0,tt);
         var row = parseInt(z.substring(tt));
         var value = worksheet[z].v;
-        var coll;
+       
+        var currentColumnAry;
         var mynewcol ;
         var newcollsec;
         var nameCol; 
 
-        var oldColname ;
+        var oldColname="";
         var newColname;
    
 
@@ -42,47 +41,47 @@ sheet_name_list.forEach(function(y) {
             continue;
         }
 
-                if(!data[row]){
-                    data[row]={};
-                    var mainary=[]
-                    var mynewcol1 ={};
-                } 
+        if(!data[row]){
+            data[row]={};
+            var mainary=[]
+            var newColumnAry ={};
+        } 
 
         
                 
                 if(headers[col].indexOf(".") > -1) {
-                        coll = headers[col].split(".");
-                        mynewcol = coll[0].substring(coll[0].indexOf("[")+1,coll[0].indexOf("]"));;
-                        newcollKey = coll[1];
-                        oldColname = coll[0].split("[")[0]
+                        currentColumnAry = headers[col].split(".");
+                        mynewcolInx = currentColumnAry[0].substring(currentColumnAry[0].indexOf("[")+1,currentColumnAry[0].indexOf("]"));;
+                        newcollKey = currentColumnAry[1];
+                        oldColname = currentColumnAry[0].split("[")[0]
+                       
                         if(oldColname != newColname) {
                             var mainary=[]
                             newColname = oldColname;
                         }
                         
 
-                        var kkcunt=0;
+                        var arrayColumnCnt=0;
                         //console.log("new Col name : "+mynewcol + " newcol key :"+newcollKey );
                         //var ccont =headers[col].reduce(function(countMap, word) {countMap[word] = ++countMap[word] || 1;return countMap}, {});
-                        var kkcunt=  columnCount(headers, coll[0] ) -1 ;
+                        var arrayColumnCnt=  columnCount(headers, currentColumnAry[0] ) -1 ;
                  
                        //console.log(typeof headers)
                  
                        
-                        if(columnchangeKey== kkcunt)    
-                                 mainary.push(mynewcol1);
+                             if(changeColumKeyCounter == arrayColumnCnt)    
+                                 mainary.push(newColumnAry);
 
-                                if(getInx != mynewcol) {
-                                    getInx = mynewcol
-                                    columnchangeKey=0;
-                                    var mynewcol1= {};
+                                if(getOldInx != mynewcolInx) {
+                                    getOldInx = mynewcolInx
+                                    changeColumKeyCounter=0;
+                                    var newColumnAry= {};
                                     //mynewcol1[newcollKey]={}
                                 }
-                                mynewcol1[newcollKey] =  value;
+                                newColumnAry[newcollKey] =  value;
                                 //console.log(newcollKey +"---"+value)
                         
-                        
-                                columnchangeKey++;  
+                                changeColumKeyCounter++;  
                        
                 } 
 
@@ -91,9 +90,8 @@ sheet_name_list.forEach(function(y) {
                     //str = JSON.parse(str);
                     var colnameAry = headers[col].split(".");
                     var mynewcol = colnameAry[0].split("[");
-                    nameCol = mynewcol[0]; 
-
-                    data[row][nameCol] =JSON.stringify( mainary) ;
+                        nameCol = mynewcol[0]; 
+                        data[row][nameCol] =JSON.stringify( mainary) ;
                    
                 } else{
                     data[row][headers[col]] = value;     
@@ -104,8 +102,11 @@ sheet_name_list.forEach(function(y) {
    
     data.shift();
     data.shift();
-    console.log(data)
+  
 });
+
+console.log(data)
+
 
 function columnCount(headerObj , col) {
     
