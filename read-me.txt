@@ -60,3 +60,10 @@ Password: SQL
 
 
 ##############API ####################
+
+https://eu-west-1a.online.tableau.com/api/2.8/sites/6d92c654-f744-4653-b4aa-41850773ed5b/views
+https://eu-west-1a.online.tableau.com/api/2.8/sites/6d92c654-f744-4653-b4aa-41850773ed5b/views/b4d24a09-ccde-48bc-bc11-a5ab4f4b0898/data
+
+header [{"key":"x-tableau-auth","value":"9Ag0e77lQryS-q8HtpiiCg|jZNNsAtHGqXGUSwHmregOUACEP5WAl6h","description":""}]
+
+
