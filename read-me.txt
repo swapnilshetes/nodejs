@@ -1,4 +1,3 @@
-
 from lxml import html
 from lxml.html.soupparser import fromstring
 import sqlite3
