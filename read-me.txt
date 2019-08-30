@@ -1,1 +1,214 @@
 
+from lxml import html
+from lxml.html.soupparser import fromstring
+import sqlite3
+import requests
+from urllib.request import urlopen as urlReq
+from bs4 import BeautifulSoup as bSoup
+import re
+from dicttoxml import dicttoxml
+from xml.dom.minidom import parseString
+
+page_url = (
+    "http://ca.healthinspections.us/napa/search.cfm?start=1&1=1&sd=01/01/1970&ed=03/01/2017&kw1=&kw2=&kw3="
+    "&rel1=N.permitName&rel2=N.permitName&rel3=N.permitName&zc=&dtRng=YES&pre=similar"
+)
+start_page  = 1
+extracted_data = {}
+headers = {'User-Agent': 'Mozilla/5.0'}
+
+def setup_db():
+    print("Setting up DB..")
+    conn = sqlite3.connect("scraping-assignment.db")
+    
+    conn.execute("DROP TABLE inspection")
+    conn.execute("DROP TABLE violation")
+
+    create_table_inspection = (
+        "CREATE TABLE IF NOT EXISTS inspection ("
+        "inspection_id INT PRIMARY KEY NOT NULL,"
+        "facility_name TEXT,"
+        "facility_no TEXT,"
+        "facility_datetime DATETIME,"
+        "facility_address TEXT,"
+        "facility_type TEXT"
+        ")"
+    )
+    create_table_violation = (
+        "CREATE TABLE IF NOT EXISTS violation ("
+        "inspection_id INT NOT NULL,"
+        "inspection_cat TEXT,"
+        "violation_type TEXT,"
+        "description DATETIME,"
+        "violation_pts TEXT,"
+        "FOREIGN KEY(inspection_id) REFERENCES inspection(inspection_id)"
+        ")"
+    )
+    conn.execute(create_table_inspection)
+    conn.execute(create_table_violation)
+    conn.close()
+
+def insert_db(inspection_id, facility):
+    conn = sqlite3.connect("scraping-assignment.db")
+    inspection_query = "INSERT INTO inspection (inspection_id,facility_name,facility_no,facility_datetime,facility_address,facility_type) VALUES (?,?,?,?,?,?)"
+    values = (
+        inspection_id,
+        facility['facility_name'][0],
+        facility['facility_no'][0],
+        facility['facility_date'][0],
+        facility['facility_address'][0],
+        facility['facility_type'][0]
+    )
+    conn.execute(inspection_query, values)
+
+    violation_query = "INSERT INTO violation (inspection_id,inspection_cat,violation_type,description,violation_pts) VALUES (?,?,?,?,?)"
+    for index in range(0,len( facility['description'])):
+        values1 = (
+            inspection_id,
+            facility['inspection_cat'][index],
+            facility['violation_type'][index],
+            facility['description'][index],
+            facility['violation_pts'][index]
+        )
+        conn.execute(violation_query, values1)
+    
+    conn.commit()
+    conn.close()
+
+def create_xml(obj , descFullPath) :
+    
+     xml = dicttoxml(obj, custom_root='data', attr_type=False)
+     f = open(descFullPath + "dump-web-scraping.xml","a+");
+    
+     f.write(str(parseString(xml).toprettyxml()))
+     f.close()
+     return 1
+
+
+
+def select_db():
+    print("Selecting records..")
+    conn = sqlite3.connect("scraping-assignment.db")
+    rows = conn.execute(
+        "SELECT * FROM inspection "
+        "LEFT JOIN violation ON inspection.inspection_id = violation.inspection_id "
+        "ORDER BY inspection_id"
+    )
+
+    for row in rows:
+        print("-------------------------------------")
+        print("Inspection ID: "+ str(row[0]))
+        print("Facility Name: "+ str(row[1]))
+        print("Facility No.: "+ str(row[2]))
+        print("Facility Date: "+ str(row[3]))
+        print("Facility Address: "+ str(row[4]))
+        print("Facility Type: "+ str(row[5]))
+        print("Inspection Cat: "+ str(row[7]))
+        print("Violation Type: "+ str(row[8]))
+        print("Description: "+ str(row[9]))
+        print("Violation Points: "+ str(row[10]))
+        print("-------------------------------------")
+    
+    print("\n\nOperation Completed successfully!")
+
+    conn.close()
+
+def scrape():
+    print("Scraping URL and Inserting records. Please wait..")
+    uClient = urlReq(page_url)
+    page_html = uClient.read()
+    page_soup = bSoup(page_html , "html.parser")
+    uClient.close()     
+    total_pages_count = int(re.compile('(\d+) Establishments matched').search(page_soup.text).group(1))
+    facilitynew=[]
+    pages = int(total_pages_count / 10 )
+    if total_pages_count % 10 > 0:
+       pages += 1
+    
+    start_page = 1
+
+    for page in range(1, 2):
+        #pages + 1
+        # Bind Dtail Page URl
+        
+        _paging_url = 'https://ca.healthinspections.us/napa/search.cfm?start='+ str(start_page) +'&1=1&sd=01/01/1970&ed=03/01/2017&kw1=&kw2=&kw3=&rel1=N.permitName&rel2=N.permitName&rel3=N.permitName&zc=&dtRng=YES&pre=similar'
+        #print(_paging_url)
+        inspection_list = []
+        uClientpaging = urlReq(_paging_url)
+        paging_html = uClientpaging.read()
+        paging_soup = bSoup(paging_html , "html.parser")   
+        containers = paging_soup.findAll("div", {"style" : "padding:2px;border-top:1px solid #EFEFEF;"})
+        for contain in containers:
+        	inspection_list.append(re.compile('inspectionID=(\d+)').search(str(contain.a)).group(1))
+
+        for inspection_id in inspection_list:
+            _detail_page_url = requests.get('https://ca.healthinspections.us/_templates/135/Food%20Inspection/_report_full.cfm?domainID=135&inspectionID='+str(inspection_id)+'&dsn=dhd_135')
+            #print("detail page : "+'https://ca.healthinspections.us/_templates/135/Food%20Inspection/_report_full.cfm?domainID=135&inspectionID='+str(inspection_id)+'&dsn=dhd_135')
+            tree = html.fromstring(_detail_page_url.content)
+            facilitynew.append( get_xpath(tree))
+            #print(facility)
+            #insert_db(inspection_id, facility)
+            #xml = dicttoxml(facility, custom_root='test', attr_type=False)
+            #create_xml(get_xpath(tree) , "C:\\System_bk\\python-poc\\xml\\")
+        
+        create_xml(facilitynew, "C:\\System_bk\\python-poc\\xml\\")
+        start_page = start_page + 10
+    
+
+def get_xpath(tree):
+    facility = {}
+    facility['facility_name'] = str( tree.xpath('//*[@id="foodInspectionRpt"]/div[2]/span[1]/text()')[0])
+    facility['facility_no'] = str( tree.xpath('//*[@id="foodInspectionRpt"]/div[2]/span[2]/text()')[0])
+    facility['facility_date'] = str( tree.xpath('//*[@id="foodInspectionRpt"]/div[2]/span[3]/text()')[0])
+    facility['facility_time'] =str(  tree.xpath('//*[@id="foodInspectionRpt"]/div[2]/span[5]/text()')[0])
+    facility['facility_address'] = str( tree.xpath('//*[@id="foodInspectionRpt"]/div[2]/span[5]/text()')[0])
+    facility['facility_type'] = str( tree.xpath('//*[@id="foodInspectionRpt"]/div[2]/span[10]/text()')[0])
+    
+    #facility['description'] = []
+    #facility['inspection_cat'] = []
+    #facility['violation_type'] = []
+    #facility['violation_pts'] = []
+
+    for row_no in range(1,40):
+        is_checked_table1 = tree.xpath('//*[@id="foodInspectionRpt"]/table[2]/tr/td[1]/table/tr['+ str(row_no) +']/td[3]/img/@src')
+        is_checked_table2 = tree.xpath('//*[@id="foodInspectionRpt"]/table[2]/tr/td[2]/table/tr['+ str(row_no) +']/td[3]/img/@src')
+        
+        if len(is_checked_table1) > 0:
+            if "box_checked" in is_checked_table1[0]:
+                desc = tree.xpath('//*[@id="foodInspectionRpt"]/table[2]/tr/td[1]/table/tr['+ str(row_no) +']/td[1]/text()')
+                insp_cat = tree.xpath('//*[@id="foodInspectionRpt"]/table[2]/tr/td[1]/table/tr['+ str(row_no) +']/td[2]/text()')
+                vio_type = tree.xpath('//*[@id="foodInspectionRpt"]/table[2]/tr/td[1]/table/tr['+ str(row_no) +']/td[6]/text()')
+                vio_pts = tree.xpath('//*[@id="foodInspectionRpt"]/table[2]/tr/td[1]/table/tr['+ str(row_no) +']/td[7]/text()')
+                
+                facility['description']= format_str(desc) 
+                facility['inspection_cat']=format_str(insp_cat)
+                facility['violation_type']=format_str(vio_type) 
+                facility['violation_pts']=format_str(vio_pts) 
+        
+        if len(is_checked_table2) > 0:
+            if "box_checked" in is_checked_table2[0]:
+                desc = tree.xpath('//*[@id="foodInspectionRpt"]/table[2]/tr/td[2]/table/tr['+ str(row_no) +']/td[1]/text()')
+                insp_cat = tree.xpath('//*[@id="foodInspectionRpt"]/table[2]/tr/td[2]/table/tr['+ str(row_no) +']/td[2]/text()')
+                vio_type = tree.xpath('//*[@id="foodInspectionRpt"]/table[2]/tr/td[2]/table/tr['+ str(row_no) +']/td[4]/text()')
+                vio_pts = tree.xpath('//*[@id="foodInspectionRpt"]/table[2]/tr/td[2]/table/tr['+ str(row_no) +']/td[5]/text()')
+                
+                facility['description']= format_str(desc) 
+                facility['inspection_cat'] = format_str(insp_cat) 
+                facility['violation_type']= format_str(vio_type) 
+                facility['violation_pts']= format_str(vio_pts) 
+    
+    return facility
+
+def format_str(str):
+    if(len(str)) > 0:
+        return str[0].strip().replace('\r','').replace('\n','').replace('&nbsp;','')
+    else:
+        return ""
+
+def main():
+    #setup_db()
+    scrape()
+    #select_db()
+
+if __name__ == '__main__':
+    main()
